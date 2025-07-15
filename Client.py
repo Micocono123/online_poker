@@ -144,7 +144,7 @@ class GameClient:
         card_size = (90, 130)
         for suit in server_suits:
             for rank in server_ranks:
-                filename = f"../cards/{RANK_TO_FILENAME[rank]}_of_{suit.lower()}.png"
+                filename = f"./cards/{RANK_TO_FILENAME[rank]}_of_{suit.lower()}.png"
                 try:
                     img = pygame.image.load(filename).convert_alpha()
                     self.card_images[f"{rank}{suit}"] = pygame.transform.scale(img, card_size)

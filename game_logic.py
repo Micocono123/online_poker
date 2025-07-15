@@ -182,27 +182,31 @@ class Game:
         self.log = []
         self.small_blind_amount = 10
         self.big_blind_amount = 20
+        self.last_action_was_fold = False  # Add this line
+        self.showdown_players = [] # Add this line
 
     def add_player(self, name, stack, player_id=None):
-        if len(self.players) < 9:
+        # --- FIX: Limit game to 6 players ---
+        if len(self.players) < 6:
             new_player = Player(name, stack, player_id)
-            # --- FIX for Late Joiners ---
-            # If a game is in progress, the new player will sit out until the next hand.
             if self.game_stage not in ["WAITING", "END"]:
                 new_player.is_playing = False
                 self.log.append(f"{name} has joined and will play the next hand.")
             else:
                 self.log.append(f"{name} has joined the game.")
             self.players.append(new_player)
+        else:
+            self.log.append(f"Game is full. Could not add player {name}.")
+            print(f"Game is full. Could not add player {name}.")
 
     def get_state(self, for_player_id=None):
-        # --- UPDATE for Showdown ---
-        # At showdown, everyone's cards should be visible to all.
-        is_showdown = self.game_stage in ["SHOWDOWN", "END"]
+        is_showdown_phase = self.game_stage in ["SHOWDOWN", "END"]
 
         return {
-            "players": [p.to_dict(show_cards=(p.player_id == for_player_id or (is_showdown and p.is_playing))) for p in
-                        self.players],
+            "players": [p.to_dict(show_cards=(
+                p.player_id == for_player_id or
+                (is_showdown_phase and p.player_id in self.showdown_players)
+            )) for p in self.players],
             "pot": self.pot, "community_cards": [c.to_dict() for c in self.community_cards],
             "current_bet": self.current_bet,
             "dealer_pos": self.dealer_pos,
@@ -217,6 +221,8 @@ class Game:
         if len(self.players) < 2:
             self.log.append("Not enough players to start.")
             return
+
+        self.showdown_players.clear() # Clear showdown players from the previous round
         self.log.clear()
         self.deck = Deck()
         self.community_cards = []
@@ -266,6 +272,9 @@ class Game:
     def process_action(self, player_id, action, amount=0):
         player = self.players[self.current_player_index]
         if player.player_id != player_id: raise ValueError("It is not this player's turn.")
+
+        self.last_action_was_fold = (action == "fold")
+
         if action == "fold":
             player.fold() 
             self.log.append(f"{player.name} folds.")
@@ -389,7 +398,11 @@ class Game:
 
     def _do_showdown(self):
         self.log.append("Showdown begins!")
-        contenders = [p for p in self.players if p.is_playing or p.is_all_in]
+
+        # --- FIX: Create a definitive list of players for the showdown ---
+        self.showdown_players = [p.player_id for p in self.players if p.is_playing or p.is_all_in]
+        contenders = [p for p in self.players if p.player_id in self.showdown_players]
+
         if not contenders: self.game_stage = "END"; return
 
         if len(contenders) == 1:
@@ -402,14 +415,12 @@ class Game:
             self.log.append("Evaluating hands...")
             for i, pot in enumerate(pots): self._award_one_pot(pot, i + 1)
 
-        # --- NEW: Handle eliminated players ---
         for player in self.players:
             if player.stack == 0 and not player.is_spectator:
                 player.is_spectator = True
                 player.is_playing = False
                 self.log.append(f"{player.name} has been eliminated and is now a spectator.")
 
-        # Check if the game is over
         players_with_money = [p for p in self.players if not p.is_spectator]
         if len(players_with_money) < 2:
             self.log.append("Game over! Waiting for new players.")

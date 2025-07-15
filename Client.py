@@ -180,67 +180,67 @@ class GameClient:
         self.screen.blit(pot_text, text_rect)
 
     def draw_players(self):
-        players, my_pid = self.state.get('players', []), self.player_id
-        my_player_index = next((i for i, p in enumerate(players) if p['player_id'] == my_pid), -1)
-        if my_player_index == -1: return
+        players = self.state.get('players', [])
+        me = next((p for p in players if p['player_id'] == self.player_id), None)
+        if not me: return
 
-        # --- FIX: Moved the main player's Y-position down ---
-        positions = [
-            (550, 580),  # Bottom (Me) - (Moved down from 520)
-            (150, 420),  # Bottom-left
-            (150, 180),  # Top-left
-            (550, 80),  # Top-center
-            (950, 180),  # Top-right
-            (950, 420),  # Bottom-right
-        ]
+        # --- FIX: Simplified and corrected player drawing logic ---
 
-        display_players = [p for p in players if not p.get('is_spectator') or p['player_id'] == my_pid]
+        # All available seat positions
+        positions = [(550, 580), (150, 420), (150, 180), (550, 80), (950, 180), (950, 420)]
 
-        my_display_index = next((i for i, p in enumerate(display_players) if p['player_id'] == my_pid), 0)
-        rotated_players = display_players[my_display_index:] + display_players[:my_display_index]
+        # Separate "me" from "others"
+        other_players = [p for p in players if p['player_id'] != self.player_id and not p.get('is_spectator')]
 
-        for i, player in enumerate(rotated_players):
-            pos, original_index = positions[i], players.index(player)
-            is_dealer, is_sb, is_bb = (self.state.get(k) == original_index for k in
-                                       ['dealer_pos', 'sb_player_index', 'bb_player_index'])
-            is_current_turn = self.state.get('current_player_index') == original_index
-            box_color = (200, 200, 0) if is_current_turn else (40, 40, 40)
+        # Always draw "me" at the bottom position
+        self._draw_one_player(me, positions[0], is_me=True)
 
-            if player.get('is_spectator'):
-                box_color = (20, 20, 20)
+        # Draw other players in the remaining seats
+        for i, player in enumerate(other_players):
+            # We use i + 1 to skip the first position, which is reserved for "me"
+            self._draw_one_player(player, positions[i + 1], is_me=False)
 
-            pygame.draw.rect(self.screen, box_color, (pos[0], pos[1], 180, 80), border_radius=10)
+    def _draw_one_player(self, player, pos, is_me):
+        """Helper function to draw a single player's UI elements."""
+        all_players = self.state.get('players', [])
+        original_index = all_players.index(player)
 
-            if player.get('is_spectator'):
-                spec_text = self.font.render("SPECTATOR", True, (200, 200, 200))
-                self.screen.blit(spec_text, (pos[0] + 30, pos[1] - 30))
+        is_dealer, is_sb, is_bb = (self.state.get(k) == original_index for k in
+                                   ['dealer_pos', 'sb_player_index', 'bb_player_index'])
+        is_current_turn = self.state.get('current_player_index') == original_index
+        box_color = (200, 200, 0) if is_current_turn else (40, 40, 40)
 
-            for j, (text, color) in enumerate(
-                    [(player['name'], (255, 255, 255)), (f"${player['stack']}", (255, 255, 255)),
-                     (f"Bet: ${player['bet_this_street']}", (255, 255, 0))]):
-                self.screen.blit(self.font.render(text, True, color), (pos[0] + 10, pos[1] + 5 + j * 25))
+        if player.get('is_spectator'):
+            box_color = (20, 20, 20)
 
-            if is_dealer: self.screen.blit(self.dealer_chip_img, (pos[0] + 140, pos[1] + 5))
-            if is_sb: self.screen.blit(self.font_small.render("SB", True, (200, 200, 200)), (pos[0] + 145, pos[1] + 30))
-            if is_bb: self.screen.blit(self.font_small.render("BB", True, (200, 200, 200)), (pos[0] + 145, pos[1] + 50))
+        pygame.draw.rect(self.screen, box_color, (pos[0], pos[1], 180, 80), border_radius=10)
 
-            if 'cards' in player and player['cards'] and (
-                    player.get('is_playing', True) or self.state.get('game_stage') in ["SHOWDOWN", "END"]):
-                if not player.get('is_spectator'):
-                    for j, card in enumerate(player['cards']):
-                        card_img = self.card_images.get(f"{card['rank']}{card['suit']}")
-                        if card_img:
-                            is_top_row = i in [2, 3, 4]
-                            if is_top_row:
-                                card_y_offset = pos[1] + 90
-                            else:
-                                card_y_offset = pos[1] - 140
+        if player.get('is_spectator'):
+            spec_text = self.font.render("SPECTATOR", True, (200, 200, 200))
+            self.screen.blit(spec_text, (pos[0] + 30, pos[1] - 30))
 
-                            self.screen.blit(card_img, (pos[0] + j * 50, card_y_offset))
+        for j, (text, color) in enumerate([(player['name'], (255, 255, 255)), (f"${player['stack']}", (255, 255, 255)),
+                                           (f"Bet: ${player['bet_this_street']}", (255, 255, 0))]):
+            self.screen.blit(self.font.render(text, True, color), (pos[0] + 10, pos[1] + 5 + j * 25))
 
-            if not player.get('is_playing'):
-                fold_text = self.font.render("FOLDED", True, (255, 0, 0))
-                self.screen.blit(fold_text, (pos[0] + 50, pos[1] - 50))
+        if is_dealer: self.screen.blit(self.dealer_chip_img, (pos[0] + 140, pos[1] + 5))
+        if is_sb: self.screen.blit(self.font_small.render("SB", True, (200, 200, 200)), (pos[0] + 145, pos[1] + 30))
+        if is_bb: self.screen.blit(self.font_small.render("BB", True, (200, 200, 200)), (pos[0] + 145, pos[1] + 50))
+
+        # The server now correctly includes the 'cards' key for all showdown players.
+        # This client logic simply draws them if they exist.
+        if 'cards' in player and player['cards']:
+            if not player.get('is_spectator'):
+                for j, card in enumerate(player['cards']):
+                    card_img = self.card_images.get(f"{card['rank']}{card['suit']}")
+                    if card_img:
+                        is_top_row_pos = pos[1] <= 180
+                        card_y_offset = pos[1] + 90 if is_top_row_pos else pos[1] - 140
+                        self.screen.blit(card_img, (pos[0] + j * 50, card_y_offset))
+
+        if not player.get('is_playing'):
+            fold_text = self.font.render("FOLDED", True, (255, 0, 0))
+            self.screen.blit(fold_text, (pos[0] + 50, pos[1] - 50))
 
     def draw_buttons(self):
         players, current_player_idx = self.state.get('players', []), self.state.get('current_player_index')

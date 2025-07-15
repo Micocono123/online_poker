@@ -80,6 +80,8 @@ class GameClient:
         self.input_text, self.input_prompt = "", ""
         self.log_box = None
         self.last_log_count = 0
+        self.is_input_active, self.input_text, self.input_prompt = False, "", ""
+        self.last_game_stage = "" # Add this line
 
     def network_thread(self):
         while self.is_running:
@@ -274,66 +276,59 @@ class GameClient:
         self.screen.blit(input_surf, (410, 350))
 
     def start_graphics_mode(self):
-        self.init_pygame()
-        clock = pygame.time.Clock()
-        auto_start_timer = 0
+        self.init_pygame(); clock = pygame.time.Clock(); auto_start_timer = 0
         while self.is_running:
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT: self.is_running = False
-                self.log_box.handle_event(event)  # Pass events to the log box
+                self.log_box.handle_event(event)
                 if self.is_input_active:
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_RETURN:
                             try:
-                                if self.input_text: self.send_action(
-                                    {"action": "raise", "amount": int(self.input_text)})
-                            except ValueError:
-                                pass
+                                if self.input_text: self.send_action({"action": "raise", "amount": int(self.input_text)})
+                            except ValueError: pass
                             self.is_input_active, self.input_text = False, ""
-                        elif event.key == pygame.K_BACKSPACE:
-                            self.input_text = self.input_text[:-1]
-                        else:
-                            self.input_text += event.unicode
+                        elif event.key == pygame.K_BACKSPACE: self.input_text = self.input_text[:-1]
+                        else: self.input_text += event.unicode
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for action_label, rect in self.buttons.items():
                         if rect.collidepoint(event.pos):
                             action = action_label.split(" ")[0]
-                            if action == "raise":
-                                self.is_input_active, self.input_prompt = True, "Raise to amount:"
-                            else:
-                                self.send_action({"action": action})
+                            if action == "raise": self.is_input_active, self.input_prompt = True, "Raise to amount:"
+                            else: self.send_action({"action": action})
                             break
-
+            
             with self.lock:
+                game_stage = self.state.get('game_stage')
+                
+                # --- THIS IS THE FIX ---
+                # Detect the start of a new hand to reset log tracking
+                if game_stage == "PREFLOP" and self.last_game_stage != "PREFLOP":
+                    # When a new hand starts, reset the log counter but don't clear the visual log
+                    self.log_box.add_log("--- New Round ---")
+                    self.last_log_count = 0
+
                 current_logs = self.state.get('log', [])
                 if len(current_logs) > self.last_log_count:
-                    if self.state.get('game_stage') == "PREFLOP" and len(self.log_box.all_logs) > 10:
-                        self.log_box.all_logs.clear()
-
                     new_logs = current_logs[self.last_log_count:]
                     for log in new_logs:
                         self.log_box.add_log(log)
-                        # --- THIS IS THE NEW LINE ---
-                        print(f"> {log}")  # Also print the log to the console
+                        print(f"> {log}")
                     self.last_log_count = len(current_logs)
+                
+                self.last_game_stage = game_stage
 
-                game_stage = self.state.get('game_stage')
                 players = self.state.get('players', [])
                 if game_stage in ["END", "WAITING"] and len(players) >= 2 and players[0]['player_id'] == self.player_id:
                     players_with_money = [p for p in players if p['stack'] > 0]
                     if len(players_with_money) >= 2:
                         auto_start_timer += clock.get_time()
-                        if auto_start_timer > 8000:
-                            self.send_action({"action": "start_round"});
-                            auto_start_timer = 0
-                    else:
-                        auto_start_timer = 0
-                else:
-                    auto_start_timer = 0
+                        if auto_start_timer > 8000: self.send_action({"action": "start_round"}); auto_start_timer = 0
+                    else: auto_start_timer = 0
+                else: auto_start_timer = 0
 
-            self.draw_game()
-            clock.tick(30)
+            self.draw_game(); clock.tick(30)
         pygame.quit()
 
     # --- TEXT MODE ---

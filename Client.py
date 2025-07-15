@@ -226,8 +226,8 @@ class GameClient:
             self.screen.blit(self.font.render(text, True, color), (pos[0] + 10, pos[1] + 5 + j * 25))
 
         if is_dealer: self.screen.blit(self.dealer_chip_img, (pos[0] + 140, pos[1] + 5))
-        if is_sb: self.screen.blit(self.font_small.render("SB", True, (200, 200, 200)), (pos[0] + 145, pos[1] + 30))
-        if is_bb: self.screen.blit(self.font_small.render("BB", True, (200, 200, 200)), (pos[0] + 145, pos[1] + 50))
+        if is_sb: self.screen.blit(self.font_small.render("SB", True, (232, 10, 252)), (pos[0] + 145, pos[1] + 30))
+        if is_bb: self.screen.blit(self.font_small.render("BB", True, (10, 252, 232)), (pos[0] + 145, pos[1] + 50))
 
         # The server now correctly includes the 'cards' key for all showdown players.
         # This client logic simply draws them if they exist.

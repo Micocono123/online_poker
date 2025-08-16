@@ -150,12 +150,3 @@ def main_server():
 
 if __name__ == '__main__':
     main_server()
-
-if __name__ == '__main__':
-    if OFFLINE_TESTING:
-        # Keeping the offline loop for easy testing
-        from offline_test_loop import offline_game_loop
-
-        offline_game_loop()
-    else:
-        main_server()

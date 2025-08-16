@@ -232,17 +232,18 @@ class GameClient:
         # The server now correctly includes the 'cards' key for all showdown players.
         # This client logic simply draws them if they exist.
         if 'cards' in player and player['cards']:
-            if not player.get('is_spectator'):
+            if not player.get('is_spectator') and player.get('is_playing'):
                 for j, card in enumerate(player['cards']):
                     card_img = self.card_images.get(f"{card['rank']}{card['suit']}")
                     if card_img:
-                        is_top_row_pos = pos[1] <= 180
+                        is_top_row_pos = pos[1] < 180 # IMPORTANT PART
                         card_y_offset = pos[1] + 90 if is_top_row_pos else pos[1] - 140
                         self.screen.blit(card_img, (pos[0] + j * 50, card_y_offset))
 
         if not player.get('is_playing'):
-            fold_text = self.font.render("FOLDED", True, (255, 0, 0))
-            self.screen.blit(fold_text, (pos[0] + 50, pos[1] - 50))
+            if not player.get('is_spectator'):
+                fold_text = self.font.render("FOLDED", True, (255, 0, 0))
+                self.screen.blit(fold_text, (pos[0] + 50, pos[1] - 50))
 
     def draw_buttons(self):
         players, current_player_idx = self.state.get('players', []), self.state.get('current_player_index')

@@ -184,6 +184,7 @@ class Game:
         self.big_blind_amount = 20
         self.last_action_was_fold = False  # Add this line
         self.showdown_players = [] # Add this line
+        self.last_raise_amount = 0
 
     def add_player(self, name, stack, player_id=None):
         # --- FIX: Limit game to 6 players ---
@@ -213,6 +214,7 @@ class Game:
             "sb_player_index": self.sb_player_index,
             "bb_player_index": self.bb_player_index,
             "current_player_index": self.current_player_index,
+            "last_raise_amount": self.last_raise_amount,
             "game_stage": self.game_stage,
             "log": self.log
         }
@@ -267,6 +269,7 @@ class Game:
         self.current_bet = self.big_blind_amount
         self.game_stage = "PREFLOP"
         self.current_player_index = (bb_player_index + 1) % len(self.players)
+        self.last_raise_amount = self.big_blind_amount
         self.log.append("New round started.")
 
     def process_action(self, player_id, action, amount=0):
@@ -284,14 +287,37 @@ class Game:
             self.pot += bet_placed
             self.log.append(f"{player.name} calls ${bet_placed}.")
         elif action == "raise":
-            if amount < self.current_bet * 2 and self.current_bet > 0: raise ValueError("Raise must be at least 2x.")
-            amount_to_bet = amount - player.bet_this_street
-            bet_placed = player.place_bet(amount_to_bet) 
+            # --- NEW POKER RAISE VALIDATION ---
+            min_raise_to = self.current_bet + self.last_raise_amount
+            player_total_bet = player.stack + player.bet_this_street
+
+            # An all-in can sometimes be for less than a full legal raise.
+            is_all_in_raise = (amount == player_total_bet)
+
+            if amount < min_raise_to and not is_all_in_raise:
+                raise ValueError(f"Raise must be to at least ${min_raise_to}.")
+            if amount > player_total_bet:
+                raise ValueError("Cannot raise more than your stack.")
+
+            # This raise is valid. Calculate its size.
+            new_raise_amount = amount - self.current_bet
+
+            bet_placed = player.place_bet(amount - player.bet_this_street)
             self.pot += bet_placed
-            self.current_bet = player.bet_this_street 
+            self.current_bet = amount
             self.log.append(f"{player.name} raises to ${self.current_bet}.")
-            for p in self.players:
-                if p.is_playing and p != player: p.has_acted = False
+
+            # An all-in for less than a full raise is a special case
+            # that does not reopen the betting action for players who have already acted.
+            is_under_raise = is_all_in_raise and amount < min_raise_to
+
+            if not is_under_raise:
+                self.last_raise_amount = new_raise_amount
+                # This is a full raise, so reset 'has_acted' for other players.
+                for p in self.players:
+                    if p.is_playing and not p.is_all_in and p != player:
+                        p.has_acted = False
+            # --- END NEW LOGIC ---
         elif action == "check":
             if self.current_bet > player.bet_this_street: raise ValueError("Cannot check.")
             player.has_acted = True 
@@ -358,6 +384,8 @@ class Game:
             p.bet_this_street = 0
             p.has_acted = False
         self.current_bet = 0
+
+        self.last_raise_amount = self.big_blind_amount
 
         # --- BUG FIX for All-In Scenarios ---
         # Check if a betting round is even possible. A betting round requires
@@ -447,6 +475,42 @@ class Game:
             last_investment_level = investment_level
         return pots
 
+    def _format_hand_for_display(self, hand_cards: list) -> list:
+        """
+        Sorts a 5-card poker hand (list of Card objects) for conventional display.
+        """
+        # 1. Count the frequency of each card rank
+        rank_counts = {}
+        for card in hand_cards:
+            rank_counts[card.rank] = rank_counts.get(card.rank, 0) + 1
+
+        # 2. Group the ranks by their frequency (count)
+        groups = {}
+        for rank, count in rank_counts.items():
+            if count not in groups:
+                groups[count] = []
+            groups[count].append(rank)
+
+        # 3. Sort the ranks within each group from highest to lowest value
+        for count in groups:
+            # Use the Card's RANK_MAP for sorting
+            groups[count].sort(key=lambda r: Card.RANK_MAP[r], reverse=True)
+
+        # 4. Build the final list of sorted ranks in order of significance
+        sorted_ranks = []
+        # We check for counts 4, 3, 2, 1 in that specific order
+        for count in sorted(groups.keys(), reverse=True):
+            sorted_ranks.extend(groups[count])
+
+        # 5. Reconstruct the hand using the sorted rank order
+        formatted_hand = []
+        for rank in sorted_ranks:
+            # Find all cards of the current rank in the original hand
+            cards_of_rank = [c for c in hand_cards if c.rank == rank]
+            formatted_hand.extend(cards_of_rank)
+
+        return formatted_hand
+
     def _award_one_pot(self, pot, pot_number):
         eligible_players = pot['eligible_players']
         pot_amount = pot['amount']
@@ -472,6 +536,8 @@ class Game:
             winner.stack += win_amount
 
             # --- UPDATE for Detailed Log Message ---
-            winning_hand_str = ' '.join(map(str, best_hand_in_pot.cards))
+            sorted_hand_cards = self._format_hand_for_display(best_hand_in_pot.cards)
+            winning_hand_str = ' '.join(map(str, sorted_hand_cards))
+
             log_message = (f"{winner.name} wins ${win_amount} with {best_hand_in_pot.rank_name}: {winning_hand_str}")
             self.log.append(log_message)

@@ -83,6 +83,14 @@ class GameClient:
         self.is_input_active, self.input_text, self.input_prompt = False, "", ""
         self.last_game_stage = "" # Add this line
 
+        # Slider state management
+        self.slider_track_rect = None  # We will define this rect in the drawing function
+        self.slider_handle_rect = None
+        self.slider_min_raise = 0
+        self.slider_max_raise = 0
+        self.slider_current_raise = 0
+        self.slider_dragging = False
+
     def network_thread(self):
         while self.is_running:
             try:
@@ -164,9 +172,8 @@ class GameClient:
             self.draw_community_cards()
             self.draw_players()
             self.draw_pot()
-            self.draw_buttons()
+            self.draw_action_ui()
             self.log_box.draw(self.screen)  # Draw the scrollable log box
-            if self.is_input_active: self.draw_input_box()
         pygame.display.flip()
 
     def draw_community_cards(self):
@@ -245,68 +252,166 @@ class GameClient:
                 fold_text = self.font.render("FOLDED", True, (255, 0, 0))
                 self.screen.blit(fold_text, (pos[0] + 50, pos[1] - 50))
 
-    def draw_buttons(self):
-        players, current_player_idx = self.state.get('players', []), self.state.get('current_player_index')
-        if current_player_idx is None or not players: return
-        current_player = players[current_player_idx]
-        if not (current_player.get('player_id') == self.player_id and current_player.get('is_playing')):
-            return
-        button_y, button_width, button_height, mouse_pos = 650, 120, 50, pygame.mouse.get_pos()
-        actions = {"fold": (750, button_y)}
-        can_check = current_player.get('bet_this_street', 0) == self.state.get('current_bet', 0)
-        if can_check:
-            actions["check"] = (880, button_y)
-        else:
-            actions[f"call ${self.state.get('current_bet', 0) - current_player.get('bet_this_street', 0)}"] = (
-            880, button_y)
-        actions["raise"] = (1010, button_y)
-        self.buttons.clear()
-        for action_label, pos in actions.items():
-            rect = pygame.Rect(pos[0], pos[1], button_width, button_height)
-            self.buttons[action_label] = rect
-            color = (200, 200, 0) if rect.collidepoint(mouse_pos) else (255, 255, 0)
-            pygame.draw.rect(self.screen, color, rect, border_radius=10)
-            text = self.font.render(action_label.split(" ")[0].title(), True, (0, 0, 0))
-            self.screen.blit(text, text.get_rect(center=rect.center))
+    def draw_action_ui(self):
+        """Draws the complete action interface: buttons and the integrated raise slider."""
+        players = self.state.get('players', [])
+        current_player_idx = self.state.get('current_player_index')
 
-    def draw_input_box(self):
-        pygame.draw.rect(self.screen, (50, 50, 50), (400, 300, 480, 100), border_radius=10)
-        prompt_surf = self.font.render(self.input_prompt, True, (255, 255, 255))
-        self.screen.blit(prompt_surf, (410, 310))
-        input_surf = self.font.render(self.input_text, True, (255, 255, 255))
-        self.screen.blit(input_surf, (410, 350))
+        # 1. Determine if the action UI should be visible
+        is_my_turn = False
+        me = None
+        if current_player_idx is not None and current_player_idx < len(players):
+            current_player = players[current_player_idx]
+            me = next((p for p in players if p['player_id'] == self.player_id), None)
+            if me and current_player['player_id'] == self.player_id and me['is_playing']:
+                is_my_turn = True
+
+        if not is_my_turn:
+            self.slider_dragging = False  # Stop dragging if it's no longer our turn
+            return
+
+        # --- UI Layout & Sizing (No changes here) ---
+        BUTTON_WIDTH, BUTTON_HEIGHT, BUTTON_GAP = 120, 50, 10
+        start_x = 760
+        UI_Y_BUTTONS = 585
+        UI_Y_SLIDER = UI_Y_BUTTONS + BUTTON_HEIGHT + 15
+        total_ui_width = (BUTTON_WIDTH * 3) + (BUTTON_GAP * 2)
+
+        mouse_pos = pygame.mouse.get_pos()
+        self.buttons.clear()
+
+        # 2. Define Button Colors and Rects (No changes here)
+        BUTTON_COLORS = {'fold': (200, 40, 40), 'call': (40, 180, 40), 'check': (40, 180, 40), 'raise': (230, 150, 0)}
+        BUTTON_HOVER_COLORS = {'fold': (255, 60, 60), 'call': (60, 230, 60), 'check': (60, 230, 60),
+                               'raise': (255, 190, 40)}
+
+        fold_rect = pygame.Rect(start_x, UI_Y_BUTTONS, BUTTON_WIDTH, BUTTON_HEIGHT)
+        call_check_rect = pygame.Rect(start_x + BUTTON_WIDTH + BUTTON_GAP, UI_Y_BUTTONS, BUTTON_WIDTH, BUTTON_HEIGHT)
+        raise_rect = pygame.Rect(start_x + (BUTTON_WIDTH + BUTTON_GAP) * 2, UI_Y_BUTTONS, BUTTON_WIDTH, BUTTON_HEIGHT)
+
+        # 3. Draw Fold Button (No changes here)
+        self.buttons['fold'] = fold_rect
+        fold_color = BUTTON_HOVER_COLORS['fold'] if fold_rect.collidepoint(mouse_pos) else BUTTON_COLORS['fold']
+        pygame.draw.rect(self.screen, fold_color, fold_rect, border_radius=10)
+        fold_text = self.font.render("Fold", True, (0, 0, 0))
+        self.screen.blit(fold_text, fold_text.get_rect(center=fold_rect.center))
+
+        # 4. Draw Call/Check Button
+        current_bet = self.state.get('current_bet', 0)
+        can_check = me.get('bet_this_street', 0) == current_bet
+
+        if can_check:
+            self.buttons['check'] = call_check_rect
+            label, color_key = "Check", 'check'
+        else:
+            # --- UPDATE: Change Call button to "Call To" display ---
+            self.buttons['call'] = call_check_rect
+            # The label now shows the total bet amount, not the difference.
+            label, color_key = f"Call ${current_bet}", 'call'
+
+        cc_color = BUTTON_HOVER_COLORS[color_key] if call_check_rect.collidepoint(mouse_pos) else BUTTON_COLORS[
+            color_key]
+        pygame.draw.rect(self.screen, cc_color, call_check_rect, border_radius=10)
+        cc_text = self.font.render(label, True, (0, 0, 0))
+        self.screen.blit(cc_text, cc_text.get_rect(center=call_check_rect.center))
+
+        # 5. Calculate Raise Slider Values (No changes here)
+        my_bet = me.get('bet_this_street', 0)
+        last_raise_amount = self.state.get('last_raise_amount', self.state.get('big_blind_amount', 20))
+        min_r = current_bet + last_raise_amount
+
+        self.slider_min_raise = min(min_r, me['stack'] + my_bet)
+        self.slider_max_raise = me['stack'] + my_bet
+
+        if not self.slider_dragging:
+            self.slider_current_raise = self.slider_min_raise
+
+        # 6. Draw the Slider (No changes here)
+        self.slider_track_rect = pygame.Rect(start_x, UI_Y_SLIDER, total_ui_width, 10)
+        pygame.draw.rect(self.screen, (80, 80, 80), self.slider_track_rect, border_radius=5)
+        raise_range = self.slider_max_raise - self.slider_min_raise
+        progress = (self.slider_current_raise - self.slider_min_raise) / raise_range if raise_range > 0 else 1.0
+        handle_x = self.slider_track_rect.x + int(progress * self.slider_track_rect.width)
+        self.slider_handle_rect = pygame.Rect(handle_x - 10, self.slider_track_rect.centery - 10, 20, 20)
+        pygame.draw.rect(self.screen, (255, 190, 40), self.slider_handle_rect, border_radius=10)
+
+        # 7. Draw the Dynamic Raise Button (No changes here)
+        self.buttons['raise'] = raise_rect
+        raise_color = BUTTON_HOVER_COLORS['raise'] if raise_rect.collidepoint(mouse_pos) else BUTTON_COLORS['raise']
+        pygame.draw.rect(self.screen, raise_color, raise_rect, border_radius=10)
+
+        if self.slider_current_raise >= self.slider_max_raise:
+            raise_label = "All-In"
+        else:
+            raise_label = f"${self.slider_current_raise}"
+
+        raise_text_title = self.font.render("Raise To", True, (0, 0, 0))
+        raise_text_amount = self.font_small.render(raise_label, True, (0, 0, 0))
+        self.screen.blit(raise_text_title, raise_text_title.get_rect(centerx=raise_rect.centerx, y=raise_rect.y + 8))
+        self.screen.blit(raise_text_amount, raise_text_amount.get_rect(centerx=raise_rect.centerx, y=raise_rect.y + 30))
 
     def start_graphics_mode(self):
-        self.init_pygame(); clock = pygame.time.Clock(); auto_start_timer = 0
+        self.init_pygame()
+        clock = pygame.time.Clock()
+        auto_start_timer = 0
         while self.is_running:
+            mouse_pos = pygame.mouse.get_pos()
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT: self.is_running = False
                 self.log_box.handle_event(event)
-                if self.is_input_active:
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_RETURN:
-                            try:
-                                if self.input_text: self.send_action({"action": "raise", "amount": int(self.input_text)})
-                            except ValueError: pass
-                            self.is_input_active, self.input_text = False, ""
-                        elif event.key == pygame.K_BACKSPACE: self.input_text = self.input_text[:-1]
-                        else: self.input_text += event.unicode
+
+                # --- NEW, SIMPLIFIED EVENT HANDLING ---
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Check for slider drag
+                    if self.slider_handle_rect and self.slider_handle_rect.collidepoint(event.pos):
+                        self.slider_dragging = True
+                    else:
+                        # Check for button clicks
+                        for action_label, rect in self.buttons.items():
+                            if rect.collidepoint(event.pos):
+                                if action_label == 'raise':
+                                    amount = self.slider_current_raise
+                                    # Ensure the final raise amount is valid before sending
+                                    if amount >= self.slider_max_raise:
+                                        amount = self.slider_max_raise
+                                    self.send_action({"action": "raise", "amount": amount})
+                                else:
+                                    self.send_action({"action": action_label})
+                                break
+
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    self.slider_dragging = False
+
+                elif event.type == pygame.MOUSEMOTION and self.slider_dragging:
+                    if self.slider_track_rect:
+                        # Calculate position relative to the start of the track
+                        relative_x = event.pos[0] - self.slider_track_rect.x
+                        progress = max(0, min(1, relative_x / self.slider_track_rect.width))
+
+                        raise_range = self.slider_max_raise - self.slider_min_raise
+                        amount = self.slider_min_raise + int(progress * raise_range)
+
+                        # Add snapping for the all-in
+                        if progress > 0.98:
+                            self.slider_current_raise = self.slider_max_raise
+                        else:
+                            self.slider_current_raise = amount
+
+                # --- UPDATED BUTTON CLICK HANDLING ---
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for action_label, rect in self.buttons.items():
                         if rect.collidepoint(event.pos):
                             action = action_label.split(" ")[0]
-                            if action == "raise": self.is_input_active, self.input_prompt = True, "Raise to amount:"
-                            else: self.send_action({"action": action})
+                            if action == "raise":
+                                self._activate_slider()  # Activate our new slider
+                            else:
+                                self.send_action({"action": action})
                             break
-            
+
             with self.lock:
                 game_stage = self.state.get('game_stage')
-                
-                # --- THIS IS THE FIX ---
-                # Detect the start of a new hand to reset log tracking
                 if game_stage == "PREFLOP" and self.last_game_stage != "PREFLOP":
-                    # When a new hand starts, reset the log counter but don't clear the visual log
                     self.log_box.add_log("--- New Round ---")
                     self.last_log_count = 0
 
@@ -317,7 +422,7 @@ class GameClient:
                         self.log_box.add_log(log)
                         print(f"> {log}")
                     self.last_log_count = len(current_logs)
-                
+
                 self.last_game_stage = game_stage
 
                 players = self.state.get('players', [])
@@ -326,10 +431,13 @@ class GameClient:
                     if len(players_with_money) >= 2:
                         auto_start_timer += clock.get_time()
                         if auto_start_timer > 8000: self.send_action({"action": "start_round"}); auto_start_timer = 0
-                    else: auto_start_timer = 0
-                else: auto_start_timer = 0
+                    else:
+                        auto_start_timer = 0
+                else:
+                    auto_start_timer = 0
 
-            self.draw_game(); clock.tick(30)
+            self.draw_game()
+            clock.tick(30)
         pygame.quit()
 
     # --- TEXT MODE ---

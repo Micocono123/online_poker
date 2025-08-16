@@ -301,6 +301,12 @@ class Game:
         self._check_round_or_game_end()
 
     def _check_round_or_game_end(self):
+        # --- FIX ---
+        # Do not try to advance the round if the game is not in an active betting stage.
+        if self.game_stage not in ["PREFLOP", "FLOP", "TURN", "RIVER"]:
+            return
+        # --- END FIX ---
+        
         active_players = [p for p in self.players if p.is_playing]
         # CRITICAL FIX: If one player is left, check for all-in players before awarding pot.
         if len(active_players) == 1:

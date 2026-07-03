@@ -30,6 +30,11 @@ A fully featured, networked **Texas Hold'em Poker** game built entirely in **Pyt
   - All-in logic
 
 ---
+## Screenshot
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/48b21fc1-ed0b-4b94-a747-74d1a8d3f091" />
+
+---
 
 ## 📦 Prerequisites
 

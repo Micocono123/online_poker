@@ -1,59 +1,205 @@
-# Online Poker
+# 🃏 Online Multiplayer Texas Hold'em Poker
 
-A game of Texas Hold'em poker online with UDP server discovery, enabling players to find and join games seamlessly on a local network.
+A fully featured, networked **Texas Hold'em Poker** game built entirely in **Python**. This project includes a custom graphical interface, automatic local network server discovery, and a complete poker engine capable of handling complex game scenarios such as split pots, side pots, and all-in situations.
 
-## Features
+---
 
-- **Texas Hold'em Poker**: Play the classic poker variant with friends or AI.
-- **Network Play**: Utilizes UDP server discovery so players can easily find and connect to poker games running on the same network.
-- **Client-Server Architecture**: 
-  - `Server.py` handles game management, player connections, and network communication.
-  - `Client.py` provides the user interface and connects players to running games.
-- **Game Logic**: All rules, hands evaluation, and betting logic are contained in `game_logic.py`.
-- **Offline Testing**: Use `offline_test_loop.py` to simulate and test game behavior without requiring multiple clients.
-- **Card Assets**: The `cards/` directory contains graphical or data resources for card representation.
+## ✨ Features
 
-## Getting Started
+- 🌐 **Local Network Multiplayer**
+  - Play with up to **6 players** over a local network using a reliable TCP socket server.
 
-### Prerequisites
+- 📡 **Zero-Configuration Server Discovery**
+  - Clients automatically locate active servers using UDP broadcasts on **port 12346**, eliminating the need to manually enter an IP address.
+
+- 🖥️ **Dynamic Graphical Interface**
+  - Responsive fullscreen interface built with **Pygame** and **PyAutoGUI**.
+  - Automatically scales to the user's display resolution.
+
+- 🎮 **Interactive User Interface**
+  - Betting slider
+  - Dynamic action buttons (Fold, Check, Call, Raise)
+  - Scrollable real-time action log
+
+- ♠️ **Complete Poker Engine**
+  - Full Texas Hold'em rules implementation
+  - Accurate hand evaluation from **High Card** to **Royal Flush**
+  - Proper betting rounds
+  - Split pot handling
+  - Side pot support
+  - All-in logic
+
+---
+
+## 📦 Prerequisites
 
 - Python 3.x
 
-### Running the Server
+### Required Libraries
+
+- `pygame`
+- `pyautogui`
+
+Install them with:
+
+```bash
+pip install pygame pyautogui
+```
+
+---
+
+# 🚀 Getting Started
+
+To play the game, use **only** the following scripts:
+
+- `Server.py`
+- `Client.py`
+
+---
+
+## 1️⃣ Host a Game
+
+Run the server on the host machine:
 
 ```bash
 python Server.py
 ```
 
-### Joining a Game as a Client
+The server will:
+
+- Listen for TCP game connections on **port 12345**
+- Broadcast its presence over UDP on **port 12346**
+
+---
+
+## 2️⃣ Join the Game
+
+On each client machine, run:
 
 ```bash
 python Client.py
 ```
 
-Clients will automatically discover servers available on the local network.
+The client will:
 
-### Offline Testing
+1. Search the local network for an active server.
+2. Automatically connect when one is found.
+3. Launch the graphical interface.
+4. Prompt the user in the console to enter a display name.
 
-To test game logic and simulate gameplay without a network:
+---
 
-```bash
-python offline_test_loop.py
+## 🧪 Offline Testing
+
+The project also includes:
+
+```
+offline_test_loop.py
 ```
 
-## Project Structure
+This script was created **only for development and debugging**.
 
-- `Server.py` &mdash; Starts a poker server and manages sessions.
-- `Client.py` &mdash; Connects to servers, interacts with users.
-- `game_logic.py` &mdash; Implements the rules and logic of Texas Hold'em.
-- `offline_test_loop.py` &mdash; Used for testing the game loop and logic (DO NOT USE).
-- `cards/` &mdash; Card assets for the game.
-- `.idea/` &mdash; Project files for IDE configuration (can be ignored for gameplay).
+It allows testing of:
 
-## License
+- Hand evaluation
+- Pot distribution
+- Betting logic
+- Side pots
+- Split pots
 
-This project currently does not specify a license.
+without requiring networking or the graphical interface.
 
-## Author
+> **Note:** This script is **not** intended for actual gameplay.
 
-[Micocono123](https://github.com/Micocono123)
+---
+
+# 📁 Project Structure
+
+```
+.
+├── Server.py
+├── Client.py
+├── game_logic.py
+├── offline_test_loop.py
+└── cards/
+    ├── AS.png
+    ├── KH.png
+    ├── ...
+```
+
+### `Server.py`
+
+- Runs the main game loop
+- Accepts multiple client connections
+- Uses threading for concurrency
+- Sends personalized JSON game states to each player
+
+### `Client.py`
+
+- Handles the Pygame GUI
+- Processes user input
+- Draws the poker table and cards
+- Automatically scales the interface
+- Manages asynchronous communication with the server
+
+### `game_logic.py`
+
+Contains the complete poker engine, including:
+
+- `Card`
+- `Deck`
+- `Hand`
+- `Player`
+- `Game`
+
+Responsibilities include:
+
+- Hand evaluation
+- Rule enforcement
+- Betting validation
+- Pot management
+- Turn order
+- Game stage progression
+
+### `offline_test_loop.py`
+
+A lightweight command-line simulator used exclusively during development for testing the poker engine.
+
+### `cards/`
+
+Contains the PNG card assets used by the client.
+
+If an image cannot be loaded, the client automatically falls back to rendering a placeholder card, preventing crashes due to missing assets.
+
+---
+
+## ⚙️ Networking
+
+| Protocol | Port | Purpose |
+|----------|------|---------|
+| TCP | 12345 | Gameplay communication |
+| UDP | 12346 | Automatic server discovery |
+
+---
+
+## 🛠 Built With
+
+- Python 3
+- Pygame
+- PyAutoGUI
+- TCP Sockets
+- UDP Broadcasting
+- JSON
+- Threading
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**.
+
+---
+
+## 👤 Author
+
+**Micocono123**
